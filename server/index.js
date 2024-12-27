@@ -40,3 +40,39 @@ db.connect((err) => {
     }
     console.log('Connected to the database.');
 });
+
+// Fetch all posts
+app.get('/posts', (req, res) => {
+    console.log('GET /posts endpoint hit');
+    db.query('SELECT * FROM posts', (err, results) => {
+        if (err) {
+            console.error('Error fetching posts:', err);
+            res.status(500).send('Server error');
+        } else {
+            res.json(results);
+        }
+    });
+});
+
+
+// Create a new post
+app.post('/posts', (req, res) => {
+    console.log('POST /posts endpoint hit');
+    console.log('Request body:', req.body);
+
+    const { title, content } = req.body;
+
+    if (!title || !content) {
+        return res.status(400).json({ error: 'Title and content are required' });
+    }
+
+    const query = 'INSERT INTO posts (title, content) VALUES (?, ?)';
+    db.query(query, [title, content], (err, results) => {
+        if (err) {
+            console.error('Error creating post:', err);
+            res.status(500).send('Server error');
+        } else {
+            res.status(201).json({ id: results.insertId, title, content });
+        }
+    });
+});
