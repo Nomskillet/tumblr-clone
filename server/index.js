@@ -20,9 +20,7 @@ app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
 
-
 console.log('Database Host:', process.env.DB_HOST);
-
 
 // Create a database connection
 const db = mysql.createConnection({
@@ -41,10 +39,16 @@ db.connect((err) => {
     console.log('Connected to the database.');
 });
 
-// Fetch all posts
+// Fetch posts with optional pagination
 app.get('/posts', (req, res) => {
     console.log('GET /posts endpoint hit');
-    db.query('SELECT * FROM posts', (err, results) => {
+
+    const page = parseInt(req.query.page) || 1; // Default to page 1
+    const limit = parseInt(req.query.limit) || 5; // Default to 5 posts per page
+    const offset = (page - 1) * limit;
+
+    const query = 'SELECT * FROM posts LIMIT ? OFFSET ?';
+    db.query(query, [limit, offset], (err, results) => {
         if (err) {
             console.error('Error fetching posts:', err);
             res.status(500).send('Server error');
@@ -53,7 +57,6 @@ app.get('/posts', (req, res) => {
         }
     });
 });
-
 
 // Create a new post
 app.post('/posts', (req, res) => {
@@ -76,3 +79,44 @@ app.post('/posts', (req, res) => {
         }
     });
 });
+
+// Delete a post
+app.delete('/posts/:id', (req, res) => {
+    const { id } = req.params;
+
+    const query = 'DELETE FROM posts WHERE id = ?';
+    db.query(query, [id], (err, results) => {
+        if (err) {
+            console.error('Error deleting post:', err);
+            res.status(500).send('Server error');
+        } else if (results.affectedRows === 0) {
+            res.status(404).send('Post not found');
+        } else {
+            res.status(200).send('Post deleted');
+        }
+    });
+});
+
+// Update a post
+app.put('/posts/:id', (req, res) => {
+    const { id } = req.params;
+    const { title, content } = req.body;
+
+    // Validate input
+    if (!title || !content) {
+        return res.status(400).json({ error: 'Title and content are required' });
+    }
+
+    const query = 'UPDATE posts SET title = ?, content = ? WHERE id = ?';
+    db.query(query, [title, content, id], (err, results) => {
+        if (err) {
+            console.error('Error updating post:', err);
+            res.status(500).send('Server error');
+        } else if (results.affectedRows === 0) {
+            res.status(404).send('Post not found');
+        } else {
+            res.status(200).json({ id, title, content });
+        }
+    });
+});
+
