@@ -5,6 +5,9 @@ const cors = require('cors');
 const mysql = require('mysql2');
 const app = express();
 
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -39,10 +42,23 @@ db.connect((err) => {
     console.log('Connected to the database.');
 });
 
+// Middleware to authenticate routes
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return res.status(401).json({ error: 'Access denied' });
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ error: 'Invalid token' });
+
+        req.user = user;
+        next();
+    });
+};
+
 // Fetch posts with optional pagination
 app.get('/posts', (req, res) => {
-    console.log('GET /posts endpoint hit');
-
     const page = parseInt(req.query.page) || 1; // Default to page 1
     const limit = parseInt(req.query.limit) || 5; // Default to 5 posts per page
     const offset = (page - 1) * limit;
@@ -58,11 +74,8 @@ app.get('/posts', (req, res) => {
     });
 });
 
-// Create a new post
-app.post('/posts', (req, res) => {
-    console.log('POST /posts endpoint hit');
-    console.log('Request body:', req.body);
-
+// Protect the Create Post route
+app.post('/posts', authenticateToken, (req, res) => {
     const { title, content } = req.body;
 
     if (!title || !content) {
@@ -81,7 +94,7 @@ app.post('/posts', (req, res) => {
 });
 
 // Delete a post
-app.delete('/posts/:id', (req, res) => {
+app.delete('/posts/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
 
     const query = 'DELETE FROM posts WHERE id = ?';
@@ -98,11 +111,10 @@ app.delete('/posts/:id', (req, res) => {
 });
 
 // Update a post
-app.put('/posts/:id', (req, res) => {
+app.put('/posts/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const { title, content } = req.body;
 
-    // Validate input
     if (!title || !content) {
         return res.status(400).json({ error: 'Title and content are required' });
     }
@@ -120,3 +132,51 @@ app.put('/posts/:id', (req, res) => {
     });
 });
 
+// User registration
+app.post('/register', async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const query = 'INSERT INTO users (username, password) VALUES (?, ?)';
+    db.query(query, [username, hashedPassword], (err, results) => {
+        if (err) {
+            console.error('Error registering user:', err);
+            return res.status(500).send('Server error');
+        }
+        res.status(201).json({ message: 'User registered successfully' });
+    });
+});
+
+// User login
+app.post('/login', (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    const query = 'SELECT * FROM users WHERE username = ?';
+    db.query(query, [username], async (err, results) => {
+        if (err || results.length === 0) {
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+
+        const user = results[0];
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+
+        if (!isPasswordValid) {
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+
+        const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, {
+            expiresIn: '1h',
+        });
+
+        res.json({ token });
+    });
+});
