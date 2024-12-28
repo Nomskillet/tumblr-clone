@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchPaginatedPosts, createPost, deletePost, updatePost } from './services/postService';
+import './styles.css';
+
 
 function App() {
     const [posts, setPosts] = useState([]);
